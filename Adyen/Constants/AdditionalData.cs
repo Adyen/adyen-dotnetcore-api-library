@@ -46,5 +46,7 @@ namespace Adyen.Constants
         public const string RecurringShopperReference = "recurring.shopperReference";
         public const string RecurringDetailReference = "recurring.recurringDetailReference";
         public const string AllowThreeDS2 = "allow3DS2";
+        public const string PaymentLinkId = "paymentLinkId";
+        public const string MerchantOrderReference = "merchantOrderReference";
     }
 }
