@@ -1,3 +1,5 @@
 .vs/
 TestResults/
 .vagrant/
+/.idea/*
+*.DotSettings.user

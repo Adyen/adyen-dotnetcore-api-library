@@ -22,6 +22,7 @@
 #endregion
 
 using System;
+using System.Threading;
 using Adyen.Constants;
 using Adyen.HttpClient.Interfaces;
 using Adyen.HttpClient;
@@ -32,8 +33,10 @@ namespace Adyen
 {
     public class Client
     {
+        private System.Net.Http.HttpClient _httpClient;
+        private Lazy<IClient> _lazyClient;
+
         public Config Config { get; set; }
-        private IClient _client;
 
         public string ApplicationName { get; set; }
 
@@ -41,7 +44,7 @@ namespace Adyen
 
         public event CallbackLogHandler LogCallback;
 
-        public Client(string username, string password, Environment environment)
+        public Client(string username, string password, Environment environment, System.Net.Http.HttpClient httpClient = null)
         {
             Config = new Config
             {
@@ -49,32 +52,36 @@ namespace Adyen
                 Password = password,
                 Environment = environment
             };
-            this.SetEnvironment(environment);
-        }
-        
-        public Client(string xapikey, Environment environment)
-        {
-            Config = new Config
-            {
-                Environment = environment,
-                XApiKey = xapikey
-            };
+            _httpClient = httpClient;
             this.SetEnvironment(environment);
         }
 
-        public Client(string xapikey, Environment environment, string liveEndpointUrlPrefix)
+        public Client(string xapikey, Environment environment, System.Net.Http.HttpClient httpClient = null)
         {
             Config = new Config
             {
                 Environment = environment,
                 XApiKey = xapikey
             };
+            _httpClient = httpClient;
+            this.SetEnvironment(environment);
+        }
+
+        public Client(string xapikey, Environment environment, string liveEndpointUrlPrefix, System.Net.Http.HttpClient httpClient = null)
+        {
+            Config = new Config
+            {
+                Environment = environment,
+                XApiKey = xapikey
+            };
+            _httpClient = httpClient;
             this.SetEnvironment(environment,liveEndpointUrlPrefix);
         }
 
-        public Client(Config config)
+        public Client(Config config, System.Net.Http.HttpClient httpClient = null)
         {
             Config = config;
+            _httpClient = httpClient;
         }
 
         public void SetEnvironment(Environment environment)
@@ -109,21 +116,31 @@ namespace Adyen
                     Config.PosTerminalManagementEndpoint = ClientConfig.PosTerminalManagementEndpointLive;
                     break;
             }
+
+            ReloadClient();
+        }
+
+        private void ReloadClient()
+        {
+            if (_lazyClient != null && _lazyClient.IsValueCreated)
+            {
+                _lazyClient.Value.Dispose();
+            }
+
+            _lazyClient = new Lazy<IClient>(() =>
+                _httpClient != null
+                ? new HttpClientWrapper(Config, _httpClient)
+                : (IClient)new HttpWebRequestWrapper(Config),
+                LazyThreadSafetyMode.ExecutionAndPublication
+            );
         }
 
         public IClient HttpClient
         {
-            get
-            {
-                if (_client == null)
-                {
-                    _client = new HttpUrlConnectionClient();
-                }
-                return _client;
-            }
+            get => _lazyClient.Value;
             set
             {
-                _client = value;
+                _lazyClient = new Lazy<IClient>(() => value, LazyThreadSafetyMode.ExecutionAndPublication);
             }
         }
 

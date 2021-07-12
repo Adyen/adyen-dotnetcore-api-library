@@ -42,7 +42,7 @@ namespace Adyen.Service
             var config = this.Client.Config;
             var clientInterface = this.Client.HttpClient;
             var endpoint = config.HppEndpoint + "/directory.shtml";
-            return clientInterface.Post(endpoint, postParameters, config);
+            return clientInterface.Post(endpoint, postParameters);
         }
 
         public Dictionary<string, string> GetPostParametersFromDlRequest(DirectoryLookupRequest request)

@@ -51,9 +51,12 @@ namespace Adyen
         public string CloudApiEndPoint { get; set; }
         [Obsolete("This is deprecated property by Adyen.")]
         public bool SkipCertValidation { get; set; } = false;
-      
-        //POS Terminal Management 
+
+        //POS Terminal Management
         public string PosTerminalManagementEndpoint { get; set; }
 
+
+        public bool HasPassword => !string.IsNullOrEmpty(Password);
+        public bool HasApiKey => !string.IsNullOrEmpty(XApiKey);
     }
 }

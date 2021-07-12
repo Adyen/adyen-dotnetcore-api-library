@@ -26,29 +26,31 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Net.Security;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web;
 using Adyen.HttpClient.Interfaces;
 using Adyen.Model;
-using System.Security.Cryptography.X509Certificates;
-using Adyen.Security;
 
 namespace Adyen.HttpClient
 {
-    public class HttpUrlConnectionClient : IClient
+    public class HttpWebRequestWrapper : IClient
     {
+        private readonly Config _config;
         private readonly Encoding _encoding = Encoding.UTF8;
-        private Model.Enum.Environment _environment;
-        public string Request(string endpoint, string json, Config config, bool isApiKeyRequired, RequestOptions requestOptions = null )
+
+        public HttpWebRequestWrapper(Config config)
+        {
+            _config = config;
+        }
+
+        public string Request(string endpoint, string json, bool isApiKeyRequired, RequestOptions requestOptions = null )
         {
             string responseText = null;
-            _environment = config.Environment;
-            var httpWebRequest = GetHttpWebRequest(endpoint, config, isApiKeyRequired, requestOptions );
-            if (config.HttpRequestTimeout > 0)
+            var httpWebRequest = GetHttpWebRequest(endpoint, isApiKeyRequired, requestOptions );
+            if (_config.HttpRequestTimeout > 0)
             {
-                httpWebRequest.Timeout = config.HttpRequestTimeout;
+                httpWebRequest.Timeout = _config.HttpRequestTimeout;
             }
             using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
             {
@@ -74,20 +76,19 @@ namespace Adyen.HttpClient
         }
 
         /// <summary>
-        /// HttpWebRequest asynchronous. 
+        /// HttpWebRequest asynchronous.
         /// </summary>
         /// <param name="endpoint"></param>
         /// <param name="json"></param>
-        /// <param name="config"></param>
         /// <param name="isApiKeyRequired"></param>
         /// <param name="requestOptions">Optional parameter used to specify the options for the request</param>
         /// <returns>Task<string></returns>
-        public async Task<string> RequestAsync(string endpoint, string json, Config config, bool isApiKeyRequired, RequestOptions requestOptions = null)
+        public async Task<string> RequestAsync(string endpoint, string json, bool isApiKeyRequired, RequestOptions requestOptions = null)
         {
             string responseText = null;
             //Set security protocol. Only TLS1.2
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            var httpWebRequest = GetHttpWebRequest(endpoint, config, isApiKeyRequired, requestOptions);
+            var httpWebRequest = GetHttpWebRequest(endpoint, isApiKeyRequired, requestOptions);
             using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
             {
                 streamWriter.Write(json);
@@ -112,7 +113,7 @@ namespace Adyen.HttpClient
         }
 
         /// <summary>
-        /// Handles the common http exceptions 
+        /// Handles the common http exceptions
         /// </summary>
         /// <param name="e">WebException e</param>
         private static void HandleWebException(WebException e)
@@ -140,13 +141,7 @@ namespace Adyen.HttpClient
             throw new HttpClientException((int)response.StatusCode, "HTTP Exception", response.Headers, responseText, e);
         }
 
-        [Obsolete("This is deprecated functionality by Adyen. Correct use request method with isApiKeyRequired parameter.")]
-        public string Request(string endpoint, string json, Config config)
-        {
-            return this.Request(endpoint, json, config, false,null);
-        }
-
-        public string Post(string endpoint, Dictionary<string, string> postParameters, Config config)
+        public string Post(string endpoint, Dictionary<string, string> postParameters)
         {
             var dictToString = QueryString(postParameters);
             byte[] postBytes = Encoding.UTF8.GetBytes(dictToString);
@@ -154,9 +149,9 @@ namespace Adyen.HttpClient
             httpWebRequest.Method = "POST";
             httpWebRequest.ContentType = "application/x-www-form-urlencoded";
             httpWebRequest.ContentLength = postBytes.Length;
-            if (config.Proxy != null)
+            if (_config.Proxy != null)
             {
-                httpWebRequest.Proxy = config.Proxy;
+                httpWebRequest.Proxy = _config.Proxy;
             }
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             using (var stream = httpWebRequest.GetRequestStream())
@@ -167,7 +162,7 @@ namespace Adyen.HttpClient
             return new StreamReader(response.GetResponseStream()).ReadToEnd();
         }
 
-        public HttpWebRequest GetHttpWebRequest(string endpoint, Config config, bool isApiKeyRequired, RequestOptions requestOptions = null)
+        public HttpWebRequest GetHttpWebRequest(string endpoint, bool isApiKeyRequired, RequestOptions requestOptions = null)
         {
             //Add default headers
             var httpWebRequest = (HttpWebRequest)WebRequest.Create(endpoint);
@@ -175,43 +170,31 @@ namespace Adyen.HttpClient
             httpWebRequest.ContentType = "application/json";
             httpWebRequest.Headers.Add("Accept-Charset", "UTF-8");
             httpWebRequest.Headers.Add("Cache-Control", "no-cache");
-            httpWebRequest.UserAgent = $"{config.ApplicationName} {ClientConfig.UserAgentSuffix}{ClientConfig.LibVersion}";
+            httpWebRequest.UserAgent = $"{_config.ApplicationName} {ClientConfig.UserAgentSuffix}{ClientConfig.LibVersion}";
             if (!string.IsNullOrWhiteSpace(requestOptions?.IdempotencyKey))
             {
                 httpWebRequest.Headers.Add("Idempotency-Key", requestOptions?.IdempotencyKey);
             }
             //Use one of two authentication method.
-            if (isApiKeyRequired || !string.IsNullOrEmpty(config.XApiKey))
+            if (isApiKeyRequired || !string.IsNullOrEmpty(_config.XApiKey))
             {
-                httpWebRequest.Headers.Add("x-api-key", config.XApiKey);
+                httpWebRequest.Headers.Add("x-api-key", _config.XApiKey);
             }
-            else if (!string.IsNullOrEmpty(config.Password))
+            else if (!string.IsNullOrEmpty(_config.Password))
             {
-                var authString = config.Username + ":" + config.Password;
+                var authString = _config.Username + ":" + _config.Password;
                 var bytes = Encoding.UTF8.GetBytes(authString);
                 var credentials = Convert.ToBase64String(bytes);
                 httpWebRequest.Headers.Add("Authorization", "Basic " + credentials);
                 httpWebRequest.UseDefaultCredentials = true;
             }
-            if (config.Proxy != null)
+            if (_config.Proxy != null)
             {
-                httpWebRequest.Proxy = config.Proxy;
+                httpWebRequest.Proxy = _config.Proxy;
             }
-            httpWebRequest.ServerCertificateValidationCallback = ServerCertificateValidationCallback;
+            httpWebRequest.ServerCertificateValidationCallback = (message, certificate, chain, policy) =>
+                HttpClientExtensions.ServerCertificateValidationCallback(message, certificate, chain, policy, _config.Environment);
             return httpWebRequest;
-        }
-
-        private bool ServerCertificateValidationCallback(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
-        {
-            switch (sslPolicyErrors)
-            {
-                case SslPolicyErrors.None:
-                    return true;
-                case SslPolicyErrors.RemoteCertificateNameMismatch:
-                    return TerminalCommonNameValidator.ValidateCertificate(certificate.Subject, _environment);
-                default:
-                    return false;
-            }
         }
 
         public static string QueryString(IDictionary<string, string> dict)
@@ -222,6 +205,10 @@ namespace Adyen.HttpClient
                 list.Add(item.Key + "=" + HttpUtility.UrlEncode(item.Value));
             }
             return string.Join("&", list);
+        }
+
+        public void Dispose()
+        {
         }
     }
 }

@@ -21,18 +21,17 @@
 //  */
 #endregion
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Adyen.Model;
 
 namespace Adyen.HttpClient.Interfaces
 {
-    public interface IClient
+    public interface IClient : IDisposable
     {
-        string Request(string endpoint, string json, Config config);
-        string Request(string endpoint, string json, Config config, bool isApiKeyRequired, RequestOptions requestOptions);
-        
-        Task<string> RequestAsync(string endpoint, string json, Config config, bool isApiKeyRequired, RequestOptions requestOptions);
-        string Post(string endpoint, Dictionary<string, string> postParameters, Config config);
+        string Request(string endpoint, string json, bool isApiKeyRequired, RequestOptions requestOptions = null);
+        Task<string> RequestAsync(string endpoint, string json, bool isApiKeyRequired, RequestOptions requestOptions = null);
+        string Post(string endpoint, Dictionary<string, string> postParameters);
     }
 }
